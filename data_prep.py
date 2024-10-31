@@ -251,10 +251,15 @@ def main(ticker, frequency):
 
     merged_df['timestamp'] = merged_df[0]
     prices = pd.DataFrame(x, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+
     df = pd.merge(prices, merged_df, on='timestamp', how='inner', suffixes=('_price', '_indicator'))
-    df['returns'] = df['close'].pct_change() 
-    df['next_returns'] = df['returns'].shift(-1)
-    df = df.iloc[:-1]
+
+
+
+    # df['returns'] = df['close'].pct_change() 
+    # df['next_returns'] = df['returns'].shift(-1)
+    # df = df.iloc[:-1]
+    df = calculate_future_returns(df)
 
     file_name = f'data/silver_prices/{ticker}_{frequency}_silver.csv'
     try:
@@ -263,6 +268,37 @@ def main(ticker, frequency):
     except:
         print('fail')
 
+def calculate_future_returns(df):
+    returns = {}
+    periods = [2, 4, 8, 16, 32, 64, 256]
+
+    for period in periods:
+        returns[period] = []
+
+        for i in range(len(df.close)):
+            current_price = df.iloc[i].close
+            try:
+                future_price = df.iloc[i + period].close
+            except:
+                future_return = None
+                continue
+
+            future_return = (future_price - current_price) / current_price
+            returns[period].append(future_return)
+    
+
+    for period in periods:
+        if len(returns[period]) != len(df):
+            for i in range(len(df)):
+                if i >= len(returns[period]):
+                    returns[period].append(None)
+                else:
+                    continue
+        df[f"return_{period}n"] = returns[period]
+
+
+
+    return df
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process cryptocurrency data.')
