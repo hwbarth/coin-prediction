@@ -20,6 +20,7 @@ import argparse
 from datetime import datetime
 import mlflow
 import mlflow.sklearn
+from mlflow.models import infer_signature
 
 
 def getData(df, target):
@@ -209,15 +210,25 @@ class rfModel:
 
         # End the MLflow run
         mlflow.end_run()
-        data = {
-            'timestamp': self.timestamps,
-            'predicted': self.y_pred,
-            'real': self.y_test
-        }
 
-        self.results = pd.DataFrame(data)
+        # cutoff = max((len(self.timestamps), len(self.y_pred), len(self.y_test)))
 
-        self.results.to_csv(f"models/model-output/random-forest/{self.model_name}.csv")
+        # t = self.timestamps[:cutoff]
+        # p = self.y_pred[:cutoff]
+        # te = self.y_test[:cutoff]
+
+        # data = {
+        #     'timestamp': t,
+        #     'predicted': p,
+        #     'real': te
+        # }
+
+        # self.results = pd.DataFrame(data)
+
+        # self.results.to_csv(f"models/model-output/random-forest/{self.model_name}.csv")
+
+    def setModel(self, model):
+        self.model = model
 
 
 
@@ -248,7 +259,7 @@ if __name__ == "__main__":
 
     # model_path = f'models/{ticker}_{frq}_model_{model_date}.h5'
     model_name = f"{ticker}_{frq}_{target}_{model_date}"
-    model_path = "models/random-forest"+model_name
+    model_path = "models/random-forest/"+model_name+'.joblib'
 
     rf = rfModel(X_train, y_train, X_test, y_test, ticker, frq, target, timestamps, model_name)
 
@@ -256,15 +267,44 @@ if __name__ == "__main__":
 
     getReports(rf.y_test, rf.y_pred, rf.model_name)
 
-    from mlflow.models import infer_signature
+ 
 
     # After your model training and before logging the model
     signature = infer_signature(rf.X_train, rf.model.predict(rf.X_train))
 
-    with mlflow.start_run():
-        mlflow.keras.log_model(rf.model, "model", signature=signature)
-        # Save the model locally
-        rf.model.save(f"models/random-forest/{ticker}_{frq}_{target}_{model_date}.h5")
+    # with mlflow.start_run():
+    #     mlflow.keras.log_model(rf.model, "model", signature=signature)
+    #     # Save the model locally
+    #     rf.model.save(f"models/random-forest/{ticker}_{frq}_{target}_{model_date}.h5")
+
+
+
+import mlflow.sklearn
+from sklearn.ensemble import RandomForestClassifier
+import joblib
+
+
+# Start MLflow run
+with mlflow.start_run():
+    # Log model parameters, metrics, etc.
+    mlflow.log_param("n_estimators", rf.n_estimators)
+    mlflow.log_param("max_depth", rf.max_depth)
+
+    # Log the scikit-learn model
+    mlflow.sklearn.log_model(rf, "model")
+
+    # Optionally save the model locally using joblib
+    # model_path = f"models/{model_name}.joblib"
+    joblib.dump(rf, model_path)
+    mlflow.log_artifact(model_path)  # Log the model artifact
+
+    # with mlflow.start_run():
+    #     mlflow.keras.log_model(rf.model, "model", signature=signature)
+    #     # Save the model locally
+    #     rf.model.save(f"models/random-forest/{ticker}_{frq}_{target}_{model_date}.h5")
+
+
+
 
 
 
