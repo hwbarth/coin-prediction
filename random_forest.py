@@ -21,7 +21,9 @@ from datetime import datetime
 import mlflow
 import mlflow.sklearn
 from mlflow.models import infer_signature
-
+import joblib
+  
+   
 
 def getData(df, target):
 
@@ -180,10 +182,47 @@ class rfModel:
         self.timestamps = timestamps
         self.model_name = model_name
 
-    def fitModelAndPredict(self):
-        # Set up MLflow tracking
-        mlflow.start_run()
+    # def fitModelAndPredict(self):
+    #     # # Set up MLflow tracking
+    
 
+    # # Initialize and fit the model
+    #     self.model = RandomForestClassifier(n_estimators=1000, random_state=42)
+    #     self.model.fit(self.X_train, self.y_train)
+
+    #     # Predict and evaluate for Random Forest
+    #     self.y_pred = self.model.predict(self.X_test)
+    #     accuracy_rf = accuracy_score(self.y_test, self.y_pred)
+
+    #     # Create a model directory
+    #     model_date = datetime.now().date().strftime("%Y-%m-%d")
+    #     model_name = f"{self.ticker}_{self.frequency}_{self.target}_{model_date}"
+    #     model_dir = f"models/random-forest/{model_name}"
+
+    #     # Ensure the directory exists
+    #     os.makedirs(model_dir, exist_ok=True)
+
+    #     # Save the model as a .joblib file
+    #     model_path = os.path.join(model_dir, f"{model_name}.joblib")
+    #     joblib.dump(self.model, model_path)
+
+    #     # Log model and metrics with MLflow
+    #     mlflow.log_param("ticker", self.ticker)
+    #     mlflow.log_param("frequency", self.frequency)
+    #     mlflow.log_param("target", self.target)
+    #     mlflow.log_param("model_date", model_date)
+    #     mlflow.log_metric("accuracy", accuracy_rf)
+
+    #     # Save metrics and classification report as a text file
+    #     metrics_path = os.path.join(model_dir, "metrics.txt")
+    #     with open(metrics_path, "w") as f:
+    #         f.write(f"Random Forest Accuracy: {accuracy_rf}\n")
+    #         f.write("Classification Report:\n")
+    #         f.write(classification_report(self.y_test, self.y_pred))
+
+    #     print(f'Random Forest Accuracy: {accuracy_rf}')
+    #     print(classification_report(self.y_test, self.y_pred))
+    def fitModelAndPredict(self):
         # Initialize and fit the model
         self.model = RandomForestClassifier(n_estimators=1000, random_state=42)
         self.model.fit(self.X_train, self.y_train)
@@ -192,85 +231,53 @@ class rfModel:
         self.y_pred = self.model.predict(self.X_test)
         accuracy_rf = accuracy_score(self.y_test, self.y_pred)
 
-        # Log model and metrics with MLflow
-        model_date = datetime.now().date().strftime("%Y-%m-%d")
-        
-        mlflow.log_param("ticker", self.ticker)
-        mlflow.log_param("frequency", self.frequency)
-        mlflow.log_param("target", self.target)
-        mlflow.log_param("model_date", model_date)
-        mlflow.log_metric("accuracy", accuracy_rf)
-        
-        # Log the model
-        mlflow.sklearn.log_model(self.model, "model")
+        accuracy_rf = accuracy_score(self.y_test, self.y_pred)
+        # Log metrics with MLflow
+        # self.logMetrics(accuracy_rf)
 
-        # Print results
+        # Save the model and metrics
+        self.saveModelAndMetrics(accuracy_rf)
+
         print(f'Random Forest Accuracy: {accuracy_rf}')
         print(classification_report(self.y_test, self.y_pred))
 
-        # End the MLflow run
-        mlflow.end_run()
+    def logMetrics(self, accuracy_rf):
+        # Log parameters and metrics with MLflow
+        mlflow.log_param("ticker", self.ticker)
+        mlflow.log_param("frequency", self.frequency)
+        mlflow.log_param("target", self.target)
+        mlflow.log_param("model_date", datetime.now().date().strftime("%Y-%m-%d"))
+        mlflow.log_metric("accuracy", accuracy_rf)
 
-        # cutoff = max((len(self.timestamps), len(self.y_pred), len(self.y_test)))
+    def saveModelAndMetrics(self, accuracy_rf):
+        # Create a model directory
+        model_date = datetime.now().date().strftime("%Y-%m-%d")
+        model_name = f"{self.ticker}_{self.frequency}_{self.target}_{model_date}"
+        model_dir = f"models/random-forest/{model_name}"
 
-        # t = self.timestamps[:cutoff]
-        # p = self.y_pred[:cutoff]
-        # te = self.y_test[:cutoff]
+        # Ensure the directory exists
+        os.makedirs(model_dir, exist_ok=True)
 
-        # data = {
-        #     'timestamp': t,
-        #     'predicted': p,
-        #     'real': te
-        # }
+        # Save the model as a .joblib file
+        model_path = f"{model_dir}/{model_name}.joblib"
+        os.makedirs(model_dir, exist_ok=True)
 
-        # self.results = pd.DataFrame(data)
+        joblib.dump(self.model, model_path)
 
-        # self.results.to_csv(f"models/model-output/random-forest/{self.model_name}.csv")
+        # Save metrics and classification report as a text file
+        metrics_path = os.path.join(model_dir, "metrics.txt")
+        with open(metrics_path, "w") as f:
+            f.write(f"Random Forest Accuracy: {accuracy_rf}\n")
+            f.write("Classification Report:\n")
+            f.write(classification_report(self.y_test, self.y_pred))
+
 
     def setModel(self, model):
         self.model = model
 
 
 
-if __name__ == "__main__":
 
-    #default
-    ticker = "XBTUSD"
-    frq = "1"
-    target = "return_16n"
-    parser = argparse.ArgumentParser(description='Process cryptocurrency data.')
-    parser.add_argument('ticker', type=str, help='The cryptocurrency ticker symbol (e.g., BTC, ETH)')
-    parser.add_argument('frequency', type=int, help='The frequency of data points (e.g., 1 for daily, 7 for weekly)')
-    parser.add_argument('target', type=str, help='target return period (e.g return_n8 (return for period n + 8), 2^i')
-
-
-    args = parser.parse_args()
-    ticker = args.ticker
-    frq = args.frequency
-    target = args.target
-
-    df = pd.read_csv(f"data/silver_prices/{ticker}_{frq}_silver.csv")
-    print(df)
-    timestamps = list(df['timestamp'])
-    X_train, y_train, X_test, y_test = getData(df, target)
-
-
-    model_date = datetime.now().date().strftime("%Y-%m-%d")
-
-    # model_path = f'models/{ticker}_{frq}_model_{model_date}.h5'
-    model_name = f"{ticker}_{frq}_{target}_{model_date}"
-    model_path = "models/random-forest/"+model_name+'.joblib'
-
-    rf = rfModel(X_train, y_train, X_test, y_test, ticker, frq, target, timestamps, model_name)
-
-    rf.fitModelAndPredict()
-
-    getReports(rf.y_test, rf.y_pred, rf.model_name)
-
- 
-
-    # After your model training and before logging the model
-    signature = infer_signature(rf.X_train, rf.model.predict(rf.X_train))
 
     # with mlflow.start_run():
     #     mlflow.keras.log_model(rf.model, "model", signature=signature)
@@ -278,30 +285,41 @@ if __name__ == "__main__":
     #     rf.model.save(f"models/random-forest/{ticker}_{frq}_{target}_{model_date}.h5")
 
 
+    if __name__ == "__main__":
+        ticker = "XBTUSD"
+        frq = "1"
+        target = "return_8n"
+        parser = argparse.ArgumentParser(description='Process cryptocurrency data.')
+        parser.add_argument('ticker', type=str, help='The cryptocurrency ticker symbol (e.g., BTC, ETH)')
+        parser.add_argument('frequency', type=int, help='The frequency of data points (e.g., 1 for daily, 7 for weekly)')
+        parser.add_argument('target', type=str, help='target return period (e.g return_n8 (return for period n + 8), 2^i')
 
-import mlflow.sklearn
-from sklearn.ensemble import RandomForestClassifier
-import joblib
+
+        args = parser.parse_args()
+        ticker = args.ticker
+        frq = args.frequency
+        target = args.target
+
+        df = pd.read_csv(f"data/silver_prices/{ticker}_{frq}_silver.csv")
+        print(df)
+        timestamps = list(df['timestamp'])
+        X_train, y_train, X_test, y_test = getData(df, target)
 
 
-# Start MLflow run
-with mlflow.start_run():
-    # Log model parameters, metrics, etc.
-    mlflow.log_param("n_estimators", rf.n_estimators)
-    mlflow.log_param("max_depth", rf.max_depth)
+        model_date = datetime.now().date().strftime("%Y-%m-%d")
 
-    # Log the scikit-learn model
-    mlflow.sklearn.log_model(rf, "model")
+        # model_path = f'models/{ticker}_{frq}_model_{model_date}.h5'
+        model_name = f"{ticker}_{frq}_{target}_{model_date}"
+        model_path = "models/random-forest/"+model_name+'.joblib'
 
-    # Optionally save the model locally using joblib
-    # model_path = f"models/{model_name}.joblib"
-    joblib.dump(rf, model_path)
-    mlflow.log_artifact(model_path)  # Log the model artifact
+        rf = rfModel(X_train, y_train, X_test, y_test, ticker, frq, target, timestamps, model_name)
 
-    # with mlflow.start_run():
-    #     mlflow.keras.log_model(rf.model, "model", signature=signature)
-    #     # Save the model locally
-    #     rf.model.save(f"models/random-forest/{ticker}_{frq}_{target}_{model_date}.h5")
+        rf.fitModelAndPredict()
+
+        # getReports(rf.y_test, rf.y_pred, rf.model_name)
+
+    
+
 
 
 

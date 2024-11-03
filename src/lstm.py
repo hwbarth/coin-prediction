@@ -6,13 +6,16 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional, Activation
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional, Activation, Input
 from mlflow.models import infer_signature
 import mlflow
 import mlflow.keras
 from datetime import datetime
 import argparse
 from keras.optimizers import Adam
+import os 
+from sklearn.metrics import accuracy_score, classification_report
+# from sklearn.metrics import accuracy_score, classification_report
 
 
 class Lstm:
@@ -29,7 +32,7 @@ class Lstm:
 
         df = self.data
         scaler = MinMaxScaler()
-
+        self.scaler = scaler
         close_price = df[self.target].values.reshape(-1, 1)
 
         scaled_close = scaler.fit_transform(close_price)
@@ -64,7 +67,7 @@ class Lstm:
 
     #     self.model.add(Activation('linear'))
 
-    def compileModel(self, opt='adam', loss='mean_squared_error', learning_rate=0.001):
+    def compileModel(self, opt='adam', loss='mean_squared_error', learning_rate=0.0001):
         # Set your constants
         DROPOUT = 0.2 
         WINDOW_SIZE = self.SEQ_LENGTH - 1
@@ -72,10 +75,13 @@ class Lstm:
         # Define the model
         self.model = Sequential()
 
-        self.model.add(Bidirectional(
-            LSTM(WINDOW_SIZE, return_sequences=True),
-            input_shape=(WINDOW_SIZE, self.X_train.shape[-1])
-        ))
+        # Add Input layer
+        self.model.add(Input(shape=(WINDOW_SIZE, self.X_train.shape[-1])))
+
+        # Add LSTM layer with Bidirectional wrapper
+        self.model.add(Bidirectional(LSTM(WINDOW_SIZE, return_sequences=True)))
+
+        # Add Dropout layer
         self.model.add(Dropout(rate=DROPOUT))
 
         # Add more layers as needed...
@@ -90,32 +96,70 @@ class Lstm:
         # Compile the model
         self.model.compile(optimizer=optimizer, loss=loss)
 
+        # Add Activation layer (if necessary, usually added in the Dense layer for the output)
+        self.model.add(Activation('linear'))  # This line might not be needed since Activation can be in Dense
+
         # Summary of the model
-        self.model.summary()
+        print(self.model.summary())
 
-        self.model.add(Activation('linear'))
+    # def trainModel(self):
 
+    #     self.today = datetime.now().strftime("%Y-%m-%d")
+
+    #     # Set the experiment name (optional)
+    #     mlflow.set_experiment(f"{self.ticker}_{self.frequency}_{self.target}_experiment")
+
+    #     BATCH_SIZE = 32
+
+    #     with mlflow.start_run():
+    #         # Compile the model
+    #         # self.model.compile(
+    #         #     loss='mean_squared_error',
+    #         #     optimizer='adam'
+    #         # )
+
+    #         # Log parameters
+    #         mlflow.log_param("batch_size", BATCH_SIZE)
+    #         mlflow.log_param("epochs", 15)
+    #         mlflow.log_param("optimizer", "adam")
+
+    #         history = self.model.fit(
+    #             self.X_train,
+    #             self.y_train,
+    #             epochs=15,
+    #             batch_size=BATCH_SIZE,
+    #             shuffle=False,
+    #             validation_split=0.1
+    #         )
+
+    #         # Log metrics
+    #         mlflow.log_metric("final_loss", history.history['loss'][-1])
+    #         mlflow.log_metric("final_val_loss", history.history['val_loss'][-1])
+
+    # def saveModel(self):
+
+    #     # After your model training and before logging the model
+    #     signature = infer_signature(self.X_train, self.model.predict(self.X_train))
+
+    #     with mlflow.start_run():
+    #         mlflow.keras.log_model(self.model, "model", signature=signature)
+    #         # Save the model locally
+    #         self.model.save(f"models/lstm/{self.ticker}_{self.frequency}_{self.target}_{self.today}.h5")
     def trainModel(self):
-
-        today = datetime.now().strftime("%Y-%m-%d")
+        self.model_date = datetime.now().date().strftime("%Y-%m-%d")
 
         # Set the experiment name (optional)
-        mlflow.set_experiment(f"{self.ticker}_{self.frequency}_{self.target}_experiment")
+        mlflow.set_experiment(f"{self.ticker}_{self.frequency}_{self.target}_{self.model_date}_experiment")
 
         BATCH_SIZE = 32
 
         with mlflow.start_run():
-            # Compile the model
-            # self.model.compile(
-            #     loss='mean_squared_error',
-            #     optimizer='adam'
-            # )
-
             # Log parameters
             mlflow.log_param("batch_size", BATCH_SIZE)
             mlflow.log_param("epochs", 15)
             mlflow.log_param("optimizer", "adam")
 
+            # Train the model
             history = self.model.fit(
                 self.X_train,
                 self.y_train,
@@ -130,14 +174,36 @@ class Lstm:
             mlflow.log_metric("final_val_loss", history.history['val_loss'][-1])
 
     def saveModel(self):
+        # Predict on validation/test data
+        y_pred = self.model.predict(self.X_test)
+        # Convert predictions to class labels if necessary
+        y_pred_classes = (y_pred > 0.5).astype(int)  # Example for binary classification
 
-        # After your model training and before logging the model
-        signature = infer_signature(self.X_train, self.model.predict(self.X_train))
+        # Calculate accuracy (or any other relevant metrics)
+        accuracy = accuracy_score(self.y_test, y_pred_classes)
 
+        # Create a model directory
+        model_name = f"{self.ticker}_{self.frequency}_{self.target}_{self.model_date}"
+        model_dir = f"models/lstm/{model_name}"
+        os.makedirs(model_dir, exist_ok=True)
+
+        # Save the model as an .h5 file
+        model_path = os.path.join(model_dir, f"{model_name}.h5")
+        self.model.save(model_path)
+
+        # Log the model and metrics with MLflow
         with mlflow.start_run():
-            mlflow.keras.log_model(self.model, "model", signature=signature)
-            # Save the model locally
-            self.model.save(f"models/lstm/{self.ticker}_{self.frequency}_{self.target}_{self.today}.h5")
+            # mlflow.keras.log_model(self.model, "model")
+            mlflow.log_metric("accuracy", accuracy)
+
+            # Save metrics to a text file
+            metrics_path = os.path.join(model_dir, "metrics.txt")
+            with open(metrics_path, "w") as f:
+                f.write(f"Final Accuracy: {accuracy}\n")
+                f.write("Classification Report:\n")
+                f.write(classification_report(self.y_test, y_pred_classes))
+
+        print(f'LSTM Model saved to {model_path} with accuracy: {accuracy}')
 
     def predictAndUnscale(self):
         self.y_pred = self.model.predict(self.X_test)
@@ -156,6 +222,9 @@ class Lstm:
         if self.y_test.ndim == 3:
             self.y_test_last_timestep = self.y_test[:, -1, :]  # Only if y_test is 3D
             self.y_test_inverse = self.scaler.inverse_transform(self.y_test_last_timestep)
+
+    def setModel(self, model):
+        self.model = model
 
         
 
@@ -197,6 +266,9 @@ if __name__ == "__main__":
     target = args.target
 
     df = pd.read_csv(f"data/silver_prices/{ticker}_{frq}_silver.csv")
+
+    df = df[-int((len(df)/2)):]
+
     print(df)
     timestamps = list(df['timestamp'])
     model_date = datetime.now().date().strftime("%Y-%m-%d")
@@ -209,8 +281,8 @@ if __name__ == "__main__":
     lstm.getData()
     lstm.compileModel()
     lstm.trainModel()
+    lstm.saveModel()
     lstm.predictAndUnscale()
-
     preds = lstm.y_pred_inverse
     real = lstm.y_test_inverse
     data = {
@@ -219,7 +291,13 @@ if __name__ == "__main__":
         "real":real,
     }
     result = pd.DataFrame(data)
-
     result.to_csv(f"models/model-output/lstm/{model_name}.csv")
- 
-    
+    # import tensorflow as tf
+
+    # # List all physical devices
+    # physical_devices = tf.config.list_physical_devices('GPU')
+    # print("GPUs available: ", physical_devices)
+
+    # # Optional: Set memory growth
+    # if physical_devices:
+    #     tf.config.experimental.set_memory_growth(physical_devices[0], True)
